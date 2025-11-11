@@ -1,0 +1,12 @@
+fastapi
+kokoro
+numpy
+pandas
+psutil
+pydub
+soundfile
+ffmpeg
+sounddevice
+torch
+uvicorn
+websockets
