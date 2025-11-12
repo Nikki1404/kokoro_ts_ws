@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import asyncio, json, os
+import asyncio, json, os, yaml
 import numpy as np
 import websockets
 import sounddevice as sd
 import soundfile as sf
 
+# Load config.yaml
+with open("config.yaml", "r") as f:
+    CONFIG = yaml.safe_load(f)
+
+
 async def tts_once(url, text, voice="af_heart", speed=1.0, fmt="f32"):
     async with websockets.connect(url, max_size=None) as ws:
         await ws.send(json.dumps({"text": text, "voice": voice, "speed": speed, "format": fmt}))
-        sr = 24000
+        sr = CONFIG.get("sample_rate", 24000)
         stream = None
         dtype = np.float32 if fmt == "f32" else np.int16
         audio_buf = bytearray()
@@ -54,8 +59,8 @@ async def tts_once(url, text, voice="af_heart", speed=1.0, fmt="f32"):
 
             # Save encoded file if needed
             if fmt not in {"f32", "s16"} and len(audio_buf) > 0:
-                os.makedirs("out_audio", exist_ok=True)
-                out_path = f"out_audio/output_{fmt}.{'mp3' if fmt == 'mp3' else fmt}"
+                os.makedirs(CONFIG.get("output_dir", "out_audio"), exist_ok=True)
+                out_path = f"{CONFIG.get('output_dir', 'out_audio')}/output_{fmt}.{fmt}"
                 with open(out_path, "wb") as f:
                     f.write(audio_buf)
                 print(f"[saved] {out_path}")
@@ -65,11 +70,12 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="ws://localhost:8080/ws")
+    # Load defaults from config.yaml instead of hardcoded ones
+    ap.add_argument("--url", default=CONFIG["url"])
     ap.add_argument("--text", default=None)
-    ap.add_argument("--voice", default="af_heart")
-    ap.add_argument("--speed", type=float, default=1.0)
-    ap.add_argument("--fmt", default="f32", choices=["f32", "s16", "wav", "mp3", "ogg", "flac"])
+    ap.add_argument("--voice", default=CONFIG["voice"])
+    ap.add_argument("--speed", type=float, default=CONFIG["speed"])
+    ap.add_argument("--fmt", default=CONFIG["format"], choices=["f32", "s16", "wav", "mp3", "ogg", "flac"])
     args = ap.parse_args()
 
     async def run():

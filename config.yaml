@@ -1,0 +1,38 @@
+# Kokoro TTS Configuration
+
+# WebSocket endpoint for client
+url: "ws://localhost:8080/ws"
+
+# f32, s16 = stream (PCM)
+# wav, mp3, ogg, flac = encoded
+format: "f32"
+
+speed: 1.0
+
+# Female: af_heart, af_alloy, af_ember, af_sky, af_terra
+# Male:   am_moon, am_sun, am_rain
+voice: "af_heart"
+
+# Language code
+# a = US English, b = UK English, h = Hindi, j = Japanese, c = Chinese, k = Korean
+lang_code: "a"
+
+output_dir: "out_audio"
+sample_rate: 24000
+
+# Server configuration
+server:
+  host: "0.0.0.0"
+  port: 8080
+  reload: false
+
+# Logging configuration
+logging:
+  level: "INFO"
+  save_logs: false
+  log_dir: "logs"
+
+# Pipeline options
+pipeline:
+  split_pattern: "\\n+"
+  save_wav: false
