@@ -1,4 +1,22 @@
-#config.py-
+# app/core/mappings.py
+OPENAI_MODEL_MAP = {
+    "tts-1": "kokoro-v1_0",
+    "tts-1-hd": "kokoro-v1_0",
+    "kokoro": "kokoro-v1_0",
+}
+
+OPENAI_VOICE_MAP = {
+    "alloy": "am_v0adam",
+    "ash": "af_v0nicole",
+    "coral": "bf_v0emma",
+    "echo": "af_v0bella",
+    "fable": "af_sarah",
+    "onyx": "bm_george",
+    "nova": "bf_isabella",
+    "sage": "am_michael",
+    "shimmer": "af_sky",
+}
+
 # app/core/config.py  (Pydantic v2)
 from functools import lru_cache
 from typing import List
@@ -13,7 +31,7 @@ class Settings(BaseSettings):
     app_name: str = "Kokoro OpenAI-Compatible TTS"
     debug: bool = Field(False, alias="DEBUG")
     host: str = Field("0.0.0.0", alias="HOST")
-    port: int = Field(8080, alias="PORT")
+    port: int = Field(8081, alias="PORT")
 
     # CORS
     cors_enabled: bool = Field(True, alias="CORS_ENABLED")
@@ -33,6 +51,7 @@ class Settings(BaseSettings):
     allowed_formats: List[str] = Field(
         default_factory=lambda: ["wav", "mp3", "ogg", "flac"],
         alias="ALLOWED_FORMATS",
+
     )
 
 @lru_cache
@@ -41,25 +60,73 @@ def get_settings() -> "Settings":
 
 settings = get_settings()
 
-#mapping.py-
-# app/core/mappings.py
-OPENAI_MODEL_MAP = {
-    "tts-1": "kokoro-v1_0",
-    "tts-1-hd": "kokoro-v1_0",
-    "kokoro": "kokoro-v1_0",
-}
+# app/routers/openai_compatible.py
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import Response, StreamingResponse
+from pydantic import BaseModel, Field
+from typing import Optional
 
-OPENAI_VOICE_MAP = {
-    "alloy": "am_v0adam",
-    "ash": "af_v0nicole",
-    "coral": "bf_v0emma",
-    "echo": "af_v0bella",
-    "fable": "af_sarah",
-    "onyx": "bm_george",
-    "nova": "bf_isabella",
-    "sage": "am_michael",
-    "shimmer": "af_sky",
-}
+from app.core.config import settings
+from app.tts.kokoro_engine import synthesize_np, encode_audio, maybe_save
+
+router = APIRouter(prefix="/v1")
+
+class AudioSpeechIn(BaseModel):
+    model: str = Field("tts-1", description="Ignored; kept for compatibility")
+    voice: Optional[str] = Field(None, description="Kokoro voice id (e.g., af_heart or af_sky+af_bella)")
+    input: str = Field(..., description="Text to synthesize")
+    response_format: Optional[str] = Field("wav", description="wav|mp3|ogg|flac")
+    speed: Optional[float] = Field(None, description="1.0 = normal")
+    stream: Optional[bool] = Field(False, description="If true, returns chunked bytes")
+    lang_code: Optional[str] = Field(None, description="Kokoro language code (default from server)")
+    sample_rate: Optional[int] = Field(None, description="Default from server")
+    save: Optional[bool] = Field(None, description="Override server save_audio")
+
+@router.post("/audio/speech")
+async def audio_speech(body: AudioSpeechIn):
+    fmt = (body.response_format or "wav").lower()
+    if fmt not in settings.allowed_formats and fmt != "wav":
+        raise HTTPException(status_code=400, detail=f"Unsupported response_format='{fmt}'")
+
+    text = (body.input or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty 'input'")
+
+    try:
+        audio, sr = synthesize_np(
+            text=text,
+            voice=body.voice,
+            speed=body.speed if body.speed is not None else settings.default_speed,
+            lang_code=body.lang_code or settings.lang_code,
+            sample_rate=body.sample_rate or settings.default_sample_rate,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Kokoro synth failed: {e}")
+
+    # Optional save (never break request if it fails)
+    try:
+        _ = maybe_save(
+            audio=audio,
+            sr=sr,
+            basename="out",
+            enable=body.save if body.save is not None else settings.save_audio,
+        )
+    except Exception:
+        pass
+
+    try:
+        blob, ctype = encode_audio(audio, sr, fmt)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Encoding failed: {e}")
+
+    if body.stream:
+        def _iter(b: bytes, sz: int = 64 * 1024):
+            for i in range(0, len(b), sz):
+                yield b[i:i+sz]
+        return StreamingResponse(_iter(blob), media_type=ctype)
+
+    return Response(content=blob, media_type=ctype)
+
 
 # app/tts/kokoro_engine.py
 import io
@@ -187,93 +254,7 @@ def maybe_save(audio: np.ndarray, sr: int, basename: str, enable: bool) -> Optio
     path = os.path.join(settings.save_dir, f"{basename}.wav")
     sf.write(path, audio, sr, format="WAV", subtype="PCM_16")
     return path
-    
-# app/routers/openai_compatible.py
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel, Field
-from typing import Optional
 
-from app.core.config import settings
-from app.tts.kokoro_engine import synthesize_np, encode_audio, maybe_save
-
-router = APIRouter(prefix="/v1")
-
-class AudioSpeechIn(BaseModel):
-    model: str = Field("tts-1", description="Ignored; kept for compatibility")
-    voice: Optional[str] = Field(None, description="Kokoro voice id (e.g., af_heart or af_sky+af_bella)")
-    input: str = Field(..., description="Text to synthesize")
-    response_format: Optional[str] = Field("wav", description="wav|mp3|ogg|flac")
-    speed: Optional[float] = Field(None, description="1.0 = normal")
-    stream: Optional[bool] = Field(False, description="If true, returns chunked bytes")
-    lang_code: Optional[str] = Field(None, description="Kokoro language code (default from server)")
-    sample_rate: Optional[int] = Field(None, description="Default from server")
-    save: Optional[bool] = Field(None, description="Override server save_audio")
-
-@router.post("/audio/speech")
-async def audio_speech(body: AudioSpeechIn):
-    fmt = (body.response_format or "wav").lower()
-    if fmt not in settings.allowed_formats and fmt != "wav":
-        raise HTTPException(status_code=400, detail=f"Unsupported response_format='{fmt}'")
-
-    text = (body.input or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Empty 'input'")
-
-    try:
-        audio, sr = synthesize_np(
-            text=text,
-            voice=body.voice,
-            speed=body.speed if body.speed is not None else settings.default_speed,
-            lang_code=body.lang_code or settings.lang_code,
-            sample_rate=body.sample_rate or settings.default_sample_rate,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Kokoro synth failed: {e}")
-
-    # Optional save (never break request if it fails)
-    try:
-        _ = maybe_save(
-            audio=audio,
-            sr=sr,
-            basename="out",
-            enable=body.save if body.save is not None else settings.save_audio,
-        )
-    except Exception:
-        pass
-
-    try:
-        blob, ctype = encode_audio(audio, sr, fmt)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Encoding failed: {e}")
-
-    if body.stream:
-        def _iter(b: bytes, sz: int = 64 * 1024):
-            for i in range(0, len(b), sz):
-                yield b[i:i+sz]
-        return StreamingResponse(_iter(blob), media_type=ctype)
-
-    return Response(content=blob, media_type=ctype)
-
-#test_openai.py
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://localhost:8080/v1",
-    api_key="not-needed",
-)
-
-with client.audio.speech.with_streaming_response.create(
-    model="kokoro",                  # or "tts-1" (ignored by server)
-    voice="af_sky+af_bella",         # or "af_heart"
-    input="Hello world from Kokoro!",
-    response_format="mp3",
-) as resp:
-    resp.stream_to_file("output.mp3")
-
-print("Saved -> output.mp3")
-
-# main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
@@ -282,6 +263,15 @@ from kokoro import KPipeline
 import os
 
 app = FastAPI(title=settings.app_name, debug=settings.debug)
+
+@app.get("/debug/gpu")
+def gpu_debug():
+    try:
+        import onnxruntime as ort
+        return {"providers": ort.get_available_providers()}
+    except Exception as e:
+        return {"error": str(e)}
+        
 
 if settings.cors_enabled:
     app.add_middleware(
@@ -315,45 +305,3 @@ async def preload_kokoro_voices():
 @app.get("/healthz")
 def healthz():
     return {"ok": True, "lang": settings.lang_code, "voice": settings.default_voice}
-
-#Dockerfile
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
-
-ENV https_proxy="http://163.116.128.80:8080"
-ENV http_proxy="http://163.116.128.80:8080"
-
-ENV DEBIAN_FRONTEND=noninteractive
-
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y \
-    git ffmpeg python3 python3-pip && \
-    rm -rf /var/lib/apt/lists/*
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    KOKORO_LANG=a \
-    KOKORO_DEFAULT_VOICE=af_heart \
-    KOKORO_PRELOAD_VOICES="af_heart af_bella af_sky"
-
-COPY . /app/
-
-RUN  pip install --no-cache-dir -r /app/requirements.txt
-
-RUN pip install onnxruntime-gpu
-
-EXPOSE 8080
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
-
-#requirements.txt
-fastapi
-kokoro-tts
-numpy
-openai
-onnxruntime-gpu
-pydantic-settings
-pydub
-requests
-uvicorn
-
