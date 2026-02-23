@@ -5,3 +5,5 @@ docker build us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/
 
 gcloud config set project emr-dgt-autonomous-uctr1-snbx
 gcloud auth configure-docker us-central1-docker.pkg.dev
+docker tag kokoro_openai_tts:latest \
+us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai:1.0.0
