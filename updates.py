@@ -1,7 +1,10 @@
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
-ENV https_proxy="http://163.116.128.80:8080"
-ENV http_proxy="http://163.116.128.80:8080"
+ARG http_proxy
+ARG https_proxy
+
+ENV http_proxy=${http_proxy}
+ENV https_proxy=${https_proxy}
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -16,9 +19,9 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
+
 ENV KOKORO_LANG=a
 ENV KOKORO_DEFAULT_VOICE=af_heart
 ENV KOKORO_PRELOAD_VOICES="af_heart af_bella af_sky"
@@ -32,7 +35,6 @@ RUN python3 -m pip install --no-cache-dir \
     git+https://github.com/nvidia/kokoro.git
 
 RUN python3 -m pip install --no-cache-dir onnxruntime-gpu
-
 COPY . /app/
 
 EXPOSE 8080
