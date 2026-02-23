@@ -21,8 +21,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
-    git ffmpeg python3 python3-pip && \
-    rm -rf /var/lib/apt/lists/*
+    git ffmpeg python3 python3-pip \
+    portaudio19-dev libportaudio2 libasound2-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
