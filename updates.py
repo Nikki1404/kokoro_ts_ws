@@ -10,5 +10,9 @@ us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai
 
 docker tag cx_speech_tts_kokoro:latest \
 us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_ws:1.0.0
-gcloud builds submit \
+(base) root@EC03-E01-AICOE1:/home/CORP/re_nikitav# docker push us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai:1.0.0
+The push refers to repository [us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai]
+Get "https://us-central1-docker.pkg.dev/v2/": read tcp 10.90.126.61:42656->172.253.124.82:443: read: connection reset by peer
+(base) root@EC03-E01-AICOE1:/home/CORP/re_nikitav# gcloud builds submit \
   --tag us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai:1.0.0
+ERROR: (gcloud.builds.submit) Invalid value for [source]: Dockerfile required when specifying --tag
