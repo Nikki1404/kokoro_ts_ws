@@ -1,3 +1,6 @@
+(base) root@EC03-E01-AICOE1:/home/CORP/re_nikitav/cx-speech-chatterbox# docker run -d -p 8002:8002 -v $(pwd)/voices:/app/voices -v $(pwd)/outputs:/app/outputs chatterbox-tts
+45b8f22480a0006d71fd0b2b466e0dff84d5ea5dfad798de3983ffbcaa4469ab
+
 (base) root@EC03-E01-AICOE1:/home/CORP/re_nikitav/cx-speech-chatterbox# docker logs 45b8f22480a0
 
 ==========
