@@ -345,3 +345,15 @@ RUN pip install onnxruntime-gpu
 EXPOSE 8080
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+
+#requirements.txt
+fastapi
+kokoro-tts
+numpy
+openai
+onnxruntime-gpu
+pydantic-settings
+pydub
+requests
+uvicorn
+
