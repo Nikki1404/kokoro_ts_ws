@@ -478,42 +478,65 @@ EXPOSE 8081
 CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
 
 
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from typing import Optional
+import io
+import numpy as np
+import soundfile as sf
+from pydub import AudioSegment
+
+from app.core.config import settings
+from app.tts.kokoro_engine import _get_pipeline, _as_float32_mono, _chunk_text
+
+router = APIRouter(prefix="/v1")
+
+
+class AudioSpeechIn(BaseModel):
+    model: str = Field("tts-1", description="Ignored; kept for compatibility")
+    voice: Optional[str] = Field(None, description="Kokoro voice id (e.g., af_heart or af_sky+af_bella)")
+    input: str = Field(..., description="Text to synthesize")
+    response_format: Optional[str] = Field("wav", description="wav|mp3|ogg|flac")
+    speed: Optional[float] = Field(None, description="1.0 = normal")
+    stream: Optional[bool] = Field(False, description="Kept for compatibility; StreamingResponse is used anyway")
+    lang_code: Optional[str] = Field(None, description="Kokoro language code (default from server)")
+    sample_rate: Optional[int] = Field(None, description="Default from server")
+    save: Optional[bool] = Field(None, description="Unused in streaming version")
+
+
 @router.post("/audio/speech")
 async def audio_speech(body: AudioSpeechIn):
-
     fmt = (body.response_format or "wav").lower()
-    text = (body.input or "").strip()
+    if fmt not in settings.allowed_formats and fmt != "wav":
+        raise HTTPException(status_code=400, detail=f"Unsupported response_format='{fmt}'")
 
+    text = (body.input or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Empty 'input'")
 
     voice = body.voice or settings.default_voice
     speed = body.speed if body.speed is not None else settings.default_speed
     lang_code = body.lang_code or settings.lang_code
-    sr = body.sample_rate or settings.default_sample_rate
+    sr = int(body.sample_rate or settings.default_sample_rate)
 
     pipe = _get_pipeline(lang_code)
 
-    # 🔥 IMPORTANT: MATCH WEBSOCKET BEHAVIOR
-    from app.tts.kokoro_engine import _chunk_text
-
+    # Match websocket-style pre-chunking to avoid word drops
     chunks = _chunk_text(text, max_words=20)
 
+    media_type_map = {
+        "wav": "audio/wav",
+        "mp3": "audio/mpeg",
+        "ogg": "audio/ogg",
+        "flac": "audio/flac",
+    }
+
     def generate():
-
         for chunk in chunks:
-
-            gen = pipe(
-                chunk,
-                voice=voice,
-                speed=float(speed),
-                split_pattern=r"\n+",
-            )
-
+            gen = pipe(chunk, voice=voice, speed=float(speed), split_pattern=r"\n+")
             for (_gs, _ps, audio) in gen:
-
                 arr = _as_float32_mono(audio)
-
                 if arr.size == 0:
                     continue
 
@@ -521,6 +544,29 @@ async def audio_speech(body: AudioSpeechIn):
                     buf = io.BytesIO()
                     sf.write(buf, arr, sr, format="WAV", subtype="PCM_16")
                     yield buf.getvalue()
+
+                elif fmt == "flac":
+                    buf = io.BytesIO()
+                    sf.write(buf, arr, sr, format="FLAC")
+                    yield buf.getvalue()
+
+                elif fmt == "ogg":
+                    # prefer soundfile; if it fails, pydub fallback
+                    try:
+                        buf = io.BytesIO()
+                        sf.write(buf, arr, sr, format="OGG", subtype="VORBIS")
+                        yield buf.getvalue()
+                    except Exception:
+                        pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
+                        seg = AudioSegment(
+                            pcm16.tobytes(),
+                            frame_rate=sr,
+                            sample_width=2,
+                            channels=1,
+                        )
+                        out = io.BytesIO()
+                        seg.export(out, format="ogg", bitrate="192k")
+                        yield out.getvalue()
 
                 elif fmt == "mp3":
                     pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
@@ -534,75 +580,13 @@ async def audio_speech(body: AudioSpeechIn):
                     seg.export(out, format="mp3", bitrate="192k")
                     yield out.getvalue()
 
+                else:
+                    # fallback wav
+                    buf = io.BytesIO()
+                    sf.write(buf, arr, sr, format="WAV", subtype="PCM_16")
+                    yield buf.getvalue()
 
-(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
-Traceback (most recent call last):
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app\test_openai.py", line 8, in <module>
-    response = client.audio.speech.create(
-        model="kokoro",
-    ...<2 lines>...
-        response_format="mp3",
+    return StreamingResponse(
+        generate(),
+        media_type=media_type_map.get(fmt, "audio/wav"),
     )
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\resources\audio\speech.py", line 104, in create
-    return self._post(
-           ~~~~~~~~~~^
-        "/audio/speech",
-        ^^^^^^^^^^^^^^^^
-    ...<15 lines>...
-        cast_to=_legacy_response.HttpxBinaryResponseContent,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1297, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1070, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.InternalServerError: Internal Server Error
-
-INFO:     172.17.0.1:35634 - "POST /v1/audio/speech HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/usr/local/lib/python3.10/dist-packages/uvicorn/protocols/http/h11_impl.py", line 410, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-  File "/usr/local/lib/python3.10/dist-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
-    return await self.app(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/fastapi/applications.py", line 1160, in __call__
-    await super().__call__(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/applications.py", line 107, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/errors.py", line 186, in __call__
-    raise exc
-  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/errors.py", line 164, in __call__
-    await self.app(scope, receive, _send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/cors.py", line 87, in __call__
-    await self.app(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/middleware/exceptions.py", line 63, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/usr/local/lib/python3.10/dist-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
-    await self.app(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 716, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 736, in app
-    await route.handle(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/routing.py", line 290, in handle
-    await self.app(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/fastapi/routing.py", line 119, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/usr/local/lib/python3.10/dist-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/usr/local/lib/python3.10/dist-packages/fastapi/routing.py", line 105, in app
-    response = await f(request)
-  File "/usr/local/lib/python3.10/dist-packages/fastapi/routing.py", line 431, in app
-    raw_response = await run_endpoint_function(
-  File "/usr/local/lib/python3.10/dist-packages/fastapi/routing.py", line 313, in run_endpoint_function
-    return await dependant.call(**values)
-  File "/app/app/routers/openai_compatible.py", line 85, in audio_speech
-    media_type=media_type_map.get(fmt, "audio/wav"),
-NameError: name 'media_type_map' is not defined
