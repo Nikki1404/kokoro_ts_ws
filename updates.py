@@ -21,4 +21,4 @@ I can only hear
 hello world from and this is generating from 
 why kokoro is not being tts
 
-input="Hello world from Koh koh roh and this is generating from Kokoro!"
+input="Hey Wait—did you hear that? I thought I heard a knock."
