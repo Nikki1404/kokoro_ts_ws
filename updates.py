@@ -591,19 +591,12 @@ async def audio_speech(body: AudioSpeechIn):
         media_type=media_type_map.get(fmt, "audio/wav"),
     )
 
-
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="http://127.0.0.1:8081/v1",
-    api_key="not-needed",
-)
-
-with client.audio.speech.with_streaming_response.create(
-    model="kokoro",
-    voice="af_heart",
-    input="Hello from Kokoro using KPipeline",
-) as resp:
-    resp.stream_to_file("output_fixed1.wav")
-
-print("Saved -> output_fixed1.wav")
+Matched OpenAI route streaming to WebSocket generator behavior
+Removed waveform concatenation (synthesize_np) from OpenAI route
+Reintroduced sentence-aware _chunk_text() before pipeline
+Matched split_pattern with WebSocket config
+Tested WAV, MP3, OGG formats
+Verified OpenAI SDK and StreamingResponse are working
+Compared against working Qwen TTS OpenAI implementation
+Confirmed issue is not Docker, GPU, FastAPI, OpenAI, or encoding
+Remaining likely cause: Kokoro model phoneme/token handling behavior
