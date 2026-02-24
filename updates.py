@@ -20,3 +20,5 @@ print("Saved -> output4.mp3")
 I can only hear
 hello world from and this is generating from 
 why kokoro is not being tts
+
+input="Hello world from Koh koh roh and this is generating from Kokoro!"
