@@ -202,10 +202,6 @@ _PIPELINE: Optional[KPipeline] = None
 _LANG_IN_USE: Optional[str] = None
 _DEVICE_IN_USE: Optional[str] = None
 
-
-# =================================================
-# DEVICE DETECTION
-# =================================================
 def _get_device() -> str:
     providers = ort.get_available_providers()
     if "CUDAExecutionProvider" in providers:
@@ -213,9 +209,6 @@ def _get_device() -> str:
     return "cpu"
 
 
-# =================================================
-# PIPELINE LOADER (DEVICE AWARE)
-# =================================================
 def _get_pipeline(lang_code: str) -> KPipeline:
     global _PIPELINE, _LANG_IN_USE, _DEVICE_IN_USE
 
@@ -239,9 +232,6 @@ def _get_pipeline(lang_code: str) -> KPipeline:
     return _PIPELINE
 
 
-# =================================================
-# 🔥 SENTENCE-AWARE CHUNKING (MATCHES WEBSOCKET)
-# =================================================
 def _chunk_text(text: str, max_words: int = 20):
     text = text.strip()
     if not text:
@@ -269,16 +259,12 @@ def _chunk_text(text: str, max_words: int = 20):
     return chunks
 
 
-# =================================================
 # AUDIO NORMALIZATION
-# =================================================
 def _as_float32_mono(x) -> np.ndarray:
     return np.asarray(x, dtype=np.float32).reshape(-1)
 
 
-# =================================================
 # SYNTHESIS
-# =================================================
 def synthesize_np(
     text: str,
     voice: Optional[str] = None,
@@ -299,7 +285,7 @@ def synthesize_np(
 
     rendered = []
 
-    # 🔥 Important: sentence-aware chunking
+    #  Important: sentence-aware chunking
     text_chunks = _chunk_text(text, max_words=20)
 
     for v in voices:
@@ -346,9 +332,8 @@ def synthesize_np(
     return out, sr
 
 
-# =================================================
+
 # ENCODERS
-# =================================================
 def _encode_wav_bytes(audio: np.ndarray, sr: int) -> bytes:
     buf = io.BytesIO()
     sf.write(buf, audio, sr, format="WAV", subtype="PCM_16")
@@ -402,9 +387,7 @@ def _encode_mp3_bytes(audio: np.ndarray, sr: int) -> bytes:
     return out.getvalue()
 
 
-# =================================================
 # FORMAT SWITCHER
-# =================================================
 def encode_audio(audio: np.ndarray, sr: int, fmt: str) -> Tuple[bytes, str]:
     fmt = (fmt or "wav").lower()
 
@@ -423,9 +406,6 @@ def encode_audio(audio: np.ndarray, sr: int, fmt: str) -> Tuple[bytes, str]:
     return _encode_wav_bytes(audio, sr), "audio/wav"
 
 
-# =================================================
-# OPTIONAL SAVE
-# =================================================
 def maybe_save(audio: np.ndarray, sr: int, basename: str, enable: bool) -> Optional[str]:
     if not enable:
         return None
