@@ -592,65 +592,6 @@ async def audio_speech(body: AudioSpeechIn):
     )
 
 
-(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
-Traceback (most recent call last):
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app\test_openai.py", line 8, in <module>
-    response = client.audio.speech.create(
-        model="kokoro",
-    ...<2 lines>...
-        response_format="mp3",
-    )
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\resources\audio\speech.py", line 104, in create
-    return self._post(
-           ~~~~~~~~~~^
-        "/audio/speech",
-        ^^^^^^^^^^^^^^^^
-    ...<15 lines>...
-        cast_to=_legacy_response.HttpxBinaryResponseContent,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1297, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1070, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.InternalServerError: Internal Server Error
-(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
-Traceback (most recent call last):
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app\test_openai.py", line 8, in <module>
-    response = client.audio.speech.create(
-        model="kokoro",
-    ...<2 lines>...
-        response_format="mp3",
-    )
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\resources\audio\speech.py", line 104, in create
-    return self._post(
-           ~~~~~~~~~~^
-        "/audio/speech",
-        ^^^^^^^^^^^^^^^^
-    ...<15 lines>...
-        cast_to=_legacy_response.HttpxBinaryResponseContent,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1297, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1070, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.InternalServerError: Internal Server Error
-(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
-Saved -> output_fixed1.mp3
-(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
-Traceback (most recent call last):
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app\test_openai.py", line 16, in <module>
-    f.write(response.content)
-            ^^^^^^^^
-NameError: name 'response' is not defined
-
-
-when running this 
 from openai import OpenAI
 
 client = OpenAI(
@@ -664,8 +605,5 @@ with client.audio.speech.with_streaming_response.create(
     input="Hello from Kokoro using KPipeline",
 ) as resp:
     resp.stream_to_file("output_fixed1.wav")
-
-with open("output_fixed1.wav", "wb") as f:
-    f.write(response.content)
 
 print("Saved -> output_fixed1.wav")
