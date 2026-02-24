@@ -177,8 +177,13 @@ app = FastAPI(title=settings.app_name, debug=settings.debug)
 @app.get("/debug/gpu")
 def gpu_debug():
     try:
-        import onnxruntime as ort
-        return {"providers": ort.get_available_providers()}
+        import torch
+        return {
+            "cuda_available": torch.cuda.is_available(),
+            "device_count": torch.cuda.device_count(),
+            "current_device": torch.cuda.current_device() if torch.cuda.is_available() else None,
+            "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        }
     except Exception as e:
         return {"error": str(e)}
         
