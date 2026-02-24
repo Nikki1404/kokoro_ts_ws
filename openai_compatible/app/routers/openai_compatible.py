@@ -11,7 +11,7 @@ import io
 import numpy as np
 import os
 
-from kokoro import Kokoro
+from kokoro import KPipeline   # ✅ Using GitHub Kokoro
 
 router = APIRouter(prefix="/v1")
 
@@ -23,14 +23,14 @@ def get_model():
     if MODEL is None:
         DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-        logging.info(f"Loading Kokoro model on {DEVICE}...")
+        logging.info(f"Loading Kokoro KPipeline on {DEVICE}...")
 
-        MODEL = Kokoro(
-            device=DEVICE,
-            lang=os.getenv("KOKORO_LANG", "a")
+        MODEL = KPipeline(
+            lang_code=os.getenv("KOKORO_LANG", "a"),
+            device=DEVICE
         )
 
-        logging.info("✅ Kokoro model loaded")
+        logging.info("✅ Kokoro KPipeline loaded")
 
     return MODEL
 
@@ -42,27 +42,33 @@ class AudioSpeechIn(BaseModel):
     instructions: Optional[str] = None
 
 
-# ✅ IMPORTANT: no "/tts" here
 @router.post("/audio/speech")
 async def audio_speech(body: AudioSpeechIn):
     try:
         text = (body.input or "").strip()
         voice = body.voice or os.getenv("KOKORO_DEFAULT_VOICE", "af_heart")
 
-        model = get_model()
+        pipeline = get_model()
 
-        wav, sr = model.create(
-            text=text,
+        # Generate audio via streaming generator
+        generator = pipeline(
+            text,
             voice=voice
         )
 
-        if isinstance(wav, torch.Tensor):
-            wav = wav.cpu().numpy()
+        audio_chunks = []
 
-        if isinstance(wav, list):
-            wav = np.concatenate(wav, axis=-1)
+        for chunk in generator:
+            audio = chunk.audio
+            if isinstance(audio, torch.Tensor):
+                audio = audio.cpu().numpy()
+            audio_chunks.append(audio)
 
-        wav = wav.flatten()
+        if not audio_chunks:
+            raise HTTPException(status_code=500, detail="No audio generated")
+
+        wav = np.concatenate(audio_chunks, axis=-1).flatten()
+        sr = 24000  # Kokoro default sample rate
 
         buffer = io.BytesIO()
         sf.write(buffer, wav, sr, format="WAV")
@@ -75,4 +81,5 @@ async def audio_speech(body: AudioSpeechIn):
         )
 
     except Exception as e:
+        logging.exception("TTS generation failed")
         raise HTTPException(status_code=500, detail=str(e))
