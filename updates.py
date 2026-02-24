@@ -49,7 +49,7 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="wss://whisperstream.exlservice.com:3000/ws")
+    ap.add_argument("--url", default="https://kokoro-ws-150916788856.us-central1.run.app/ws")
     ap.add_argument("--text", default=None, help="If provided, runs once with this text; otherwise interactive.")
     ap.add_argument("--voice", default="af_heart")
     ap.add_argument("--speed", type=float, default=1.0)
@@ -81,3 +81,8 @@ if __name__ == "__main__":
                 print(f"[warn] send/play failed: {e}")
 
     asyncio.run(run())
+
+(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client> python .\ws_kokoro_client.py
+Kokoro WS client (interactive). Type text and press Enter. /q to quit.
+text> hi this is tts testing via kokoro ws
+[warn] send/play failed: https://kokoro-ws-150916788856.us-central1.run.app/ws isn't a valid URI: scheme isn't ws or wss
