@@ -31,7 +31,8 @@ RUN pip install --upgrade pip
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124
 
 
-RUN python3 -m pip install git+https://github.com/hexgrad/kokoro.git
+RUN python3 -m pip install --no-cache-dir \
+    git+https://github.com/nvidia/kokoro.git
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
