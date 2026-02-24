@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers.openai_compatible import router
 
-app = FastAPI()
+app = FastAPI(title="Kokoro OpenAI-Compatible TTS")
 
 app.add_middleware(
     CORSMiddleware,
