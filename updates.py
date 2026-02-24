@@ -650,3 +650,22 @@ Traceback (most recent call last):
 NameError: name 'response' is not defined
 
 
+when running this 
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8081/v1",
+    api_key="not-needed",
+)
+
+with client.audio.speech.with_streaming_response.create(
+    model="kokoro",
+    voice="af_heart",
+    input="Hello from Kokoro using KPipeline",
+) as resp:
+    resp.stream_to_file("output_fixed1.wav")
+
+with open("output_fixed1.wav", "wb") as f:
+    f.write(response.content)
+
+print("Saved -> output_fixed1.wav")
