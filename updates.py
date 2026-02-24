@@ -1,70 +1,83 @@
 after deplying to cloud run 
-got this url https://kokoro-openai-tts-150916788856.us-central1.run.app
+
+got this url https://kokoro-ws-150916788856.us-central1.run.app
+now how to test it from local via this script 
 client.py 
-from openai import OpenAI
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import asyncio, json
+import numpy as np
+import websockets
+import sounddevice as sd
 
-client = OpenAI(
-    base_url="https://kokoro-openai-tts-150916788856.us-central1.run.app",
-    api_key="not-needed",
-)
+async def tts_once(url, text, voice="af_heart", speed=1.0, fmt="f32"):
+    async with websockets.connect(url, max_size=None) as ws:
+        await ws.send(json.dumps({"text": text, "voice": voice, "speed": speed, "format": fmt}))
+        sr = 24000
+        stream = None
+        dtype = np.float32 if fmt == "f32" else np.int16
+        try:
+            while True:
+                msg = await ws.recv()
+                if isinstance(msg, bytes):
+                    a = np.frombuffer(msg, dtype=dtype)
+                    if fmt == "s16":  # convert to float for playback
+                        a = (a.astype(np.float32) / 32767.0)
+                    if stream is None:
+                        stream = sd.OutputStream(samplerate=sr, channels=1, dtype="float32")
+                        stream.start()
+                    stream.write(a.reshape(-1, 1))
+                else:
+                    data = json.loads(msg)
+                    t = data.get("type")
+                    if t == "meta":
+                        sr = int(data["sample_rate"])
+                        print(f"[meta] sr={sr}, fmt={data['sample_format']}")
+                    elif t == "ttfa":
+                        print(f"[ttfa] {data['ms']:.1f} ms")
+                    elif t == "done":
+                        if data.get("error"): print("[done:ERROR]", data["error"])
+                        else:
+                            print(f"[done] gen={data['total_ms']:.1f} ms, audio={data['audio_ms']:.1f} ms, "
+                                  f"segments={data['segments']}, rtf={data['rtf']:.3f}")
+                        break
+        finally:
+            if stream is not None:
+                stream.stop(); stream.close()
 
-with client.audio.speech.with_streaming_response.create(
-    model="kokoro",                  # or "tts-1" (ignored by server)
-    voice="af_sky+af_bella",         # or "af_heart"
-    input="Hello world from Kokoro!",
-    response_format="mp3",
-) as resp:
-    resp.stream_to_file("output3.mp3")
+if __name__ == "__main__":
+    import argparse
 
-print("Saved -> output3.mp3")
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--url", default="wss://whisperstream.exlservice.com:3000/ws")
+    ap.add_argument("--text", default=None, help="If provided, runs once with this text; otherwise interactive.")
+    ap.add_argument("--voice", default="af_heart")
+    ap.add_argument("--speed", type=float, default=1.0)
+    ap.add_argument("--fmt", default="f32", choices=["f32","s16"])
+    args = ap.parse_args()
 
-and when testing from local got this error 
-(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
-Traceback (most recent call last):
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app\test_openai.py", line 8, in <module>
-    with client.audio.speech.with_streaming_response.create(
-         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
-        model="kokoro",                  # or "tts-1" (ignored by server)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    ...<2 lines>...
-        response_format="mp3",
-        ^^^^^^^^^^^^^^^^^^^^^^
-    ) as resp:
-    ^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_response.py", line 626, in __enter__
-    self.__response = self._request_func()
-                      ~~~~~~~~~~~~~~~~~~^^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\resources\audio\speech.py", line 104, in create
-    return self._post(
-           ~~~~~~~~~~^
-        "/audio/speech",
-        ^^^^^^^^^^^^^^^^
-    ...<15 lines>...
-        cast_to=_legacy_response.HttpxBinaryResponseContent,
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    )
-    ^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1297, in post
-    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
-                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1070, in request
-    raise self._make_status_error_from_response(err.response) from None
-openai.NotFoundError: Error code: 404 - {'detail': 'Not Found'}
+    async def run():
+        # Single-shot mode only if --text is provided
+        if args.text is not None:
+            await tts_once(args.url, args.text, args.voice, args.speed, args.fmt)
+            return
 
+        # Default: interactive mode (no flags needed)
+        print("Kokoro WS client (interactive). Type text and press Enter. /q to quit.")
+        while True:
+            try:
+                line = input("text> ").strip()
+            except EOFError:
+                break
+            if not line:
+                continue
+            if line in {"/q", "/quit", "/exit"}:
+                break
+            try:
+                await tts_once(args.url, line, args.voice, args.speed, args.fmt)
+            except KeyboardInterrupt:
+                print("\n[info] cancelled current utterance")
+            except Exception as e:
+                print(f"[warn] send/play failed: {e}")
 
-from openai import OpenAI
-
-client = OpenAI(
-    base_url="https://kokoro-openai-tts-150916788856.us-central1.run.app/v1",
-    api_key="not-needed",
-)
-
-with client.audio.speech.with_streaming_response.create(
-    model="kokoro",
-    voice="af_sky+af_bella",
-    input="Hello world from Kokoro!",
-    response_format="mp3",
-) as resp:
-    resp.stream_to_file("output3.mp3")
-
-print("Saved -> output3.mp3")
+    asyncio.run(run())
