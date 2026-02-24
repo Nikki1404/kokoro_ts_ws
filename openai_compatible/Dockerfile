@@ -25,10 +25,13 @@ RUN apt-get update && apt-get install -y \
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
+WORKDIR /app
+
 RUN pip install --upgrade pip
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu124
 
-WORKDIR /app
+
+RUN python3 -m pip install git+https://github.com/hexgrad/kokoro.git
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
