@@ -86,3 +86,9 @@ if __name__ == "__main__":
 Kokoro WS client (interactive). Type text and press Enter. /q to quit.
 text> hi this is tts testing via kokoro ws
 [warn] send/play failed: https://kokoro-ws-150916788856.us-central1.run.app/ws isn't a valid URI: scheme isn't ws or wss
+
+why getting this 
+(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client> python .\ws_kokoro_client.py
+Kokoro WS client (interactive). Type text and press Enter. /q to quit.
+text> hi this tts testin via kokoro
+[warn] send/play failed: timed out during opening handshake
