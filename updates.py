@@ -21,4 +21,4 @@ I can only hear
 hello world from and this is generating from 
 why kokoro is not being tts
 
-input="Hey Wait—did you hear that? I thought I heard a knock."
+input="Hey Wait—did you hear that? I thought I heard a knock. It was a sunny day; however, we decided to stay inside."
