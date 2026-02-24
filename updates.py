@@ -92,10 +92,8 @@ class AudioSpeechIn(BaseModel):
 async def audio_speech(body: AudioSpeechIn):
 
     fmt = (body.response_format or "wav").lower()
-    if fmt not in settings.allowed_formats and fmt != "wav":
-        raise HTTPException(status_code=400, detail=f"Unsupported response_format='{fmt}'")
-
     text = (body.input or "").strip()
+
     if not text:
         raise HTTPException(status_code=400, detail="Empty 'input'")
 
@@ -106,58 +104,45 @@ async def audio_speech(body: AudioSpeechIn):
 
     pipe = _get_pipeline(lang_code)
 
-    # 🔥 STREAM GENERATOR DIRECTLY (NO CONCATENATION)
+    # 🔥 IMPORTANT: MATCH WEBSOCKET BEHAVIOR
+    from app.tts.kokoro_engine import _chunk_text
+
+    chunks = _chunk_text(text, max_words=20)
+
     def generate():
 
-        gen = pipe(text, voice=voice, speed=float(speed), split_pattern=r"\n+")
+        for chunk in chunks:
 
-        for (_gs, _ps, audio) in gen:
+            gen = pipe(
+                chunk,
+                voice=voice,
+                speed=float(speed),
+                split_pattern=r"\n+",
+            )
 
-            arr = _as_float32_mono(audio)
+            for (_gs, _ps, audio) in gen:
 
-            if arr.size == 0:
-                continue
+                arr = _as_float32_mono(audio)
 
-            # WAV streaming
-            if fmt == "wav":
-                buf = io.BytesIO()
-                sf.write(buf, arr, sr, format="WAV", subtype="PCM_16")
-                yield buf.getvalue()
+                if arr.size == 0:
+                    continue
 
-            # MP3 streaming
-            elif fmt == "mp3":
-                pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
+                if fmt == "wav":
+                    buf = io.BytesIO()
+                    sf.write(buf, arr, sr, format="WAV", subtype="PCM_16")
+                    yield buf.getvalue()
 
-                seg = AudioSegment(
-                    pcm16.tobytes(),
-                    frame_rate=sr,
-                    sample_width=2,
-                    channels=1,
-                )
-
-                out = io.BytesIO()
-                seg.export(out, format="mp3", bitrate="192k")
-                yield out.getvalue()
-
-            # OGG streaming
-            elif fmt == "ogg":
-                buf = io.BytesIO()
-                sf.write(buf, arr, sr, format="OGG", subtype="VORBIS")
-                yield buf.getvalue()
-
-            # FLAC streaming
-            elif fmt == "flac":
-                buf = io.BytesIO()
-                sf.write(buf, arr, sr, format="FLAC")
-                yield buf.getvalue()
-
-    media_type_map = {
-        "wav": "audio/wav",
-        "mp3": "audio/mpeg",
-        "ogg": "audio/ogg",
-        "flac": "audio/flac",
-    }
-
+                elif fmt == "mp3":
+                    pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
+                    seg = AudioSegment(
+                        pcm16.tobytes(),
+                        frame_rate=sr,
+                        sample_width=2,
+                        channels=1,
+                    )
+                    out = io.BytesIO()
+                    seg.export(out, format="mp3", bitrate="192k")
+                    yield out.getvalue()
     return StreamingResponse(
         generate(),
         media_type=media_type_map.get(fmt, "audio/wav"),
