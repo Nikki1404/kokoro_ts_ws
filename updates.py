@@ -1,21 +1,54 @@
-docker build \
-  --build-arg http_proxy=http://163.116.128.80:8080 \
-  --build-arg https_proxy=http://163.116.128.80:8080 \
-  -t kokoro_openai_tts .
+after deplying to cloud run 
+got this url https://kokoro-openai-tts-150916788856.us-central1.run.app
+client.py 
+from openai import OpenAI
 
-docker build \
-  --build-arg http_proxy=http://163.116.128.80:8080 \
-  --build-arg https_proxy=http://163.116.128.80:8080 \
-  -t kokoro_ws .
+client = OpenAI(
+    base_url="https://kokoro-openai-tts-150916788856.us-central1.run.app",
+    api_key="not-needed",
+)
 
-gcloud config set project emr-dgt-autonomous-uctr1-snbx
-gcloud auth configure-docker us-central1-docker.pkg.dev
+with client.audio.speech.with_streaming_response.create(
+    model="kokoro",                  # or "tts-1" (ignored by server)
+    voice="af_sky+af_bella",         # or "af_heart"
+    input="Hello world from Kokoro!",
+    response_format="mp3",
+) as resp:
+    resp.stream_to_file("output3.mp3")
 
-docker tag kokoro_openai_tts:latest \
-us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai:1.0.0
+print("Saved -> output3.mp3")
 
-docker tag kokoro_ws:latest \
-us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_ws:1.0.0
+and when testing from local got this error 
+(kokoro_env) PS C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app> python .\test_openai.py
+Traceback (most recent call last):
+  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\fastapi_impl\app\test_openai.py", line 8, in <module>
+    with client.audio.speech.with_streaming_response.create(
+         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^
+        model="kokoro",                  # or "tts-1" (ignored by server)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<2 lines>...
+        response_format="mp3",
+        ^^^^^^^^^^^^^^^^^^^^^^
+    ) as resp:
+    ^
+  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_response.py", line 626, in __enter__
+    self.__response = self._request_func()
+                      ~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\resources\audio\speech.py", line 104, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/audio/speech",
+        ^^^^^^^^^^^^^^^^
+    ...<15 lines>...
+        cast_to=_legacy_response.HttpxBinaryResponseContent,
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1297, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\re_nikitav\Downloads\cx-speech-tts-main\cx-speech-tts-main\kokoro\basic_impl\client\kokoro_env\Lib\site-packages\openai\_base_client.py", line 1070, in request
+    raise self._make_status_error_from_response(err.response) from None
+openai.NotFoundError: Error code: 404 - {'detail': 'Not Found'}
 
-gcloud builds submit \
-  --tag us-central1-docker.pkg.dev/emr-dgt-autonomous-uctr1-snbx/cx-speech/kokoro_openai:1.0.0
+
