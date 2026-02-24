@@ -591,12 +591,6 @@ async def audio_speech(body: AudioSpeechIn):
         media_type=media_type_map.get(fmt, "audio/wav"),
     )
 
-Matched OpenAI route streaming to WebSocket generator behavior
-Removed waveform concatenation (synthesize_np) from OpenAI route
-Reintroduced sentence-aware _chunk_text() before pipeline
-Matched split_pattern with WebSocket config
-Tested WAV, MP3, OGG formats
-Verified OpenAI SDK and StreamingResponse are working
-Compared against working Qwen TTS OpenAI implementation
-Confirmed issue is not Docker, GPU, FastAPI, OpenAI, or encoding
-Remaining likely cause: Kokoro model phoneme/token handling behavior
+Kokoro model deployed via WebSocket on GCP is producing correct pronunciation for words like kokoro and gcp.
+
+However, when accessed through the OpenAI-compatible POST route, the same Kokoro model is showing phoneme/token handling inconsistencies.
