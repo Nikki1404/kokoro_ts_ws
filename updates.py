@@ -49,7 +49,7 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="https://kokoro-ws-150916788856.us-central1.run.app/ws")
+    ap.add_argument("--url", default="wss://kokoro-ws-150916788856.us-central1.run.app/ws")
     ap.add_argument("--text", default=None, help="If provided, runs once with this text; otherwise interactive.")
     ap.add_argument("--voice", default="af_heart")
     ap.add_argument("--speed", type=float, default=1.0)
