@@ -590,3 +590,20 @@ async def audio_speech(body: AudioSpeechIn):
         generate(),
         media_type=media_type_map.get(fmt, "audio/wav"),
     )
+
+
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="http://127.0.0.1:8080/v1",
+    api_key="not-needed",
+)
+
+with client.audio.speech.with_streaming_response.create(
+    model="kokoro",
+    voice="af_heart",
+    input="Hello from Kokoro using KPipeline",
+) as resp:
+    resp.stream_to_file("output.wav")
+
+print("Saved -> output.wav")
