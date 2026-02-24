@@ -491,3 +491,61 @@ COPY . /app/
 
 EXPOSE 8081
 CMD ["python3", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+
+
+@router.post("/audio/speech")
+async def audio_speech(body: AudioSpeechIn):
+
+    fmt = (body.response_format or "wav").lower()
+    text = (body.input or "").strip()
+
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty 'input'")
+
+    voice = body.voice or settings.default_voice
+    speed = body.speed if body.speed is not None else settings.default_speed
+    lang_code = body.lang_code or settings.lang_code
+    sr = body.sample_rate or settings.default_sample_rate
+
+    pipe = _get_pipeline(lang_code)
+
+    # 🔥 IMPORTANT: MATCH WEBSOCKET BEHAVIOR
+    from app.tts.kokoro_engine import _chunk_text
+
+    chunks = _chunk_text(text, max_words=20)
+
+    def generate():
+
+        for chunk in chunks:
+
+            gen = pipe(
+                chunk,
+                voice=voice,
+                speed=float(speed),
+                split_pattern=r"\n+",
+            )
+
+            for (_gs, _ps, audio) in gen:
+
+                arr = _as_float32_mono(audio)
+
+                if arr.size == 0:
+                    continue
+
+                if fmt == "wav":
+                    buf = io.BytesIO()
+                    sf.write(buf, arr, sr, format="WAV", subtype="PCM_16")
+                    yield buf.getvalue()
+
+                elif fmt == "mp3":
+                    pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
+                    seg = AudioSegment(
+                        pcm16.tobytes(),
+                        frame_rate=sr,
+                        sample_width=2,
+                        channels=1,
+                    )
+                    out = io.BytesIO()
+                    seg.export(out, format="mp3", bitrate="192k")
+                    yield out.getvalue()
+
