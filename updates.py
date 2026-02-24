@@ -62,28 +62,35 @@ OPENAI_VOICE_MAP = {
 
 # app/routers/openai_compatible.py
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
+import io
+import numpy as np
+import soundfile as sf
+from pydub import AudioSegment
 
 from app.core.config import settings
-from app.tts.kokoro_engine import synthesize_np, encode_audio, maybe_save
+from app.tts.kokoro_engine import _get_pipeline, _as_float32_mono
 
 router = APIRouter(prefix="/v1")
 
+
 class AudioSpeechIn(BaseModel):
-    model: str = Field("tts-1", description="Ignored; kept for compatibility")
-    voice: Optional[str] = Field(None, description="Kokoro voice id (e.g., af_heart or af_sky+af_bella)")
-    input: str = Field(..., description="Text to synthesize")
-    response_format: Optional[str] = Field("wav", description="wav|mp3|ogg|flac")
-    speed: Optional[float] = Field(None, description="1.0 = normal")
-    stream: Optional[bool] = Field(False, description="If true, returns chunked bytes")
-    lang_code: Optional[str] = Field(None, description="Kokoro language code (default from server)")
-    sample_rate: Optional[int] = Field(None, description="Default from server")
-    save: Optional[bool] = Field(None, description="Override server save_audio")
+    model: str = Field("tts-1")
+    voice: Optional[str] = None
+    input: str
+    response_format: Optional[str] = "wav"
+    speed: Optional[float] = None
+    stream: Optional[bool] = False
+    lang_code: Optional[str] = None
+    sample_rate: Optional[int] = None
+    save: Optional[bool] = None
+
 
 @router.post("/audio/speech")
 async def audio_speech(body: AudioSpeechIn):
+
     fmt = (body.response_format or "wav").lower()
     if fmt not in settings.allowed_formats and fmt != "wav":
         raise HTTPException(status_code=400, detail=f"Unsupported response_format='{fmt}'")
@@ -92,42 +99,69 @@ async def audio_speech(body: AudioSpeechIn):
     if not text:
         raise HTTPException(status_code=400, detail="Empty 'input'")
 
-    try:
-        audio, sr = synthesize_np(
-            text=text,
-            voice=body.voice,
-            speed=body.speed if body.speed is not None else settings.default_speed,
-            lang_code=body.lang_code or settings.lang_code,
-            sample_rate=body.sample_rate or settings.default_sample_rate,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Kokoro synth failed: {e}")
+    voice = body.voice or settings.default_voice
+    speed = body.speed if body.speed is not None else settings.default_speed
+    lang_code = body.lang_code or settings.lang_code
+    sr = body.sample_rate or settings.default_sample_rate
 
-    # Optional save (never break request if it fails)
-    try:
-        _ = maybe_save(
-            audio=audio,
-            sr=sr,
-            basename="out",
-            enable=body.save if body.save is not None else settings.save_audio,
-        )
-    except Exception:
-        pass
+    pipe = _get_pipeline(lang_code)
 
-    try:
-        blob, ctype = encode_audio(audio, sr, fmt)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Encoding failed: {e}")
+    # 🔥 STREAM GENERATOR DIRECTLY (NO CONCATENATION)
+    def generate():
 
-    if body.stream:
-        def _iter(b: bytes, sz: int = 64 * 1024):
-            for i in range(0, len(b), sz):
-                yield b[i:i+sz]
-        return StreamingResponse(_iter(blob), media_type=ctype)
+        gen = pipe(text, voice=voice, speed=float(speed), split_pattern=r"\n+")
 
-    return Response(content=blob, media_type=ctype)
+        for (_gs, _ps, audio) in gen:
 
+            arr = _as_float32_mono(audio)
 
+            if arr.size == 0:
+                continue
+
+            # WAV streaming
+            if fmt == "wav":
+                buf = io.BytesIO()
+                sf.write(buf, arr, sr, format="WAV", subtype="PCM_16")
+                yield buf.getvalue()
+
+            # MP3 streaming
+            elif fmt == "mp3":
+                pcm16 = (np.clip(arr, -1.0, 1.0) * 32767.0).astype(np.int16)
+
+                seg = AudioSegment(
+                    pcm16.tobytes(),
+                    frame_rate=sr,
+                    sample_width=2,
+                    channels=1,
+                )
+
+                out = io.BytesIO()
+                seg.export(out, format="mp3", bitrate="192k")
+                yield out.getvalue()
+
+            # OGG streaming
+            elif fmt == "ogg":
+                buf = io.BytesIO()
+                sf.write(buf, arr, sr, format="OGG", subtype="VORBIS")
+                yield buf.getvalue()
+
+            # FLAC streaming
+            elif fmt == "flac":
+                buf = io.BytesIO()
+                sf.write(buf, arr, sr, format="FLAC")
+                yield buf.getvalue()
+
+    media_type_map = {
+        "wav": "audio/wav",
+        "mp3": "audio/mpeg",
+        "ogg": "audio/ogg",
+        "flac": "audio/flac",
+    }
+
+    return StreamingResponse(
+        generate(),
+        media_type=media_type_map.get(fmt, "audio/wav"),
+    )
 # kokoro_engine.py
 
 # main.py
