@@ -591,6 +591,19 @@ async def audio_speech(body: AudioSpeechIn):
         media_type=media_type_map.get(fmt, "audio/wav"),
     )
 
-Kokoro model deployed via WebSocket on GCP is producing correct pronunciation for words like kokoro and gcp.
+from openai import OpenAI
 
-However, when accessed through the OpenAI-compatible POST route, the same Kokoro model is showing phoneme/token handling inconsistencies.
+client = OpenAI(
+    base_url="https://tts-150916788856.europe-west1.run.app/v1",
+    api_key="not-needed",
+)
+
+with client.audio.speech.with_streaming_response.create(
+    model="kokoro",                  # or "tts-1" (ignored by server)
+    voice="af_sky",         # or "af_heart"
+    input="Hello world from Kokoro!",
+    response_format="mp3",
+) as resp:
+    resp.stream_to_file("output.mp3")
+
+print("Saved -> output.mp3")
