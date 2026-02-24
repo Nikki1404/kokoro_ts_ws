@@ -78,8 +78,16 @@ async def audio_speech(body: AudioSpeechIn):
     except Exception as e:
         raise HTTPException(status_code=500, detail=e)
 
-  #DOckerfiel-
-  FROM python:3.12-slim
+requirements.txt-
+fastapi
+uvicorn
+qwen-tts
+soundfile
+numpy
+websockets
+
+#Dockerfile-
+FROM python:3.12-slim
 
 ENV http_proxy="http://163.116.128.80:8080"
 ENV https_proxy="http://163.116.128.80:8080"
@@ -128,3 +136,4 @@ with client.audio.speech.with_streaming_response.create(
     resp.stream_to_file("output.mp3")
 
 print("Saved -> output.mp3")
+
