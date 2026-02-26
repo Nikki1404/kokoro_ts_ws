@@ -66,3 +66,13 @@ with client.audio.speech.with_streaming_response.create(
             f.write(chunk)
 
 print("Saved -> output.pcm")
+
+
+audio_int16 = np.frombuffer(pcm_data, dtype=np.int16)
+audio_float = audio_int16.astype(np.float32) / 32767.0
+
+# Play audio
+sd.play(audio_float, samplerate=24000)
+sd.wait()
+
+print("Playback finished")
