@@ -26,8 +26,10 @@ s3 = boto3.client("s3")
 
 whisper_norm = EnglishTextNormalizer()
 
+
 def normalize(txt):
     return whisper_norm(txt or "")
+
 
 def list_s3_subfolders():
     paginator = s3.get_paginator("list_objects_v2")
@@ -62,17 +64,28 @@ def silence_bytes(sec: float) -> bytes:
     return b"\x00\x00" * int(TARGET_SR * sec)
 
 
-async def transcribe_ws(wav_bytes: bytes) -> Tuple[str, float, int]:
+async def transcribe_ws(wav_bytes: bytes) -> Tuple[str, float, int, int]:
 
     async with websockets.connect(URL, max_size=None) as ws:
 
         finals = []
         final_received = asyncio.Event()
 
+        first_partial_time = None
+        t_start = None
+
         async def receiver():
+            nonlocal first_partial_time
             async for msg in ws:
                 if isinstance(msg, str):
                     obj = json.loads(msg)
+
+                    # TTFT (first partial)
+                    if obj.get("type") == "partial":
+                        if obj.get("text") and first_partial_time is None:
+                            first_partial_time = time.time()
+
+                    # Final
                     if obj.get("type") == "final":
                         if obj.get("text"):
                             finals.append(obj["text"].strip())
@@ -86,21 +99,30 @@ async def transcribe_ws(wav_bytes: bytes) -> Tuple[str, float, int]:
         for chunk in iter_wav_chunks_from_bytes(wav_bytes):
             await ws.send(chunk)
             frames_sent += len(chunk) // 2
+            await asyncio.sleep(CHUNK_MS / 1000.0)  # simulate realtime streaming
 
-        # finalize
-        await ws.send(silence_bytes(0.6))
-        await ws.send(b"")
+        # trigger finalization via silence
+        await ws.send(silence_bytes(0.7))
 
         await asyncio.wait_for(final_received.wait(), timeout=60)
 
-        latency_ms = int((time.time() - t_start) * 1000)
+        t_end = time.time()
+
+        # TTFT
+        if first_partial_time:
+            ttft_ms = int((first_partial_time - t_start) * 1000)
+        else:
+            ttft_ms = None
+
+        # latency_ms (TTF)
+        latency_ms = int((t_end - t_start) * 1000)
+
         audio_sec_sent = frames_sent / TARGET_SR
 
         await ws.close()
         recv_task.cancel()
 
-        return " ".join(finals), audio_sec_sent, latency_ms
-
+        return " ".join(finals), audio_sec_sent, latency_ms, ttft_ms
 
 
 transform = jiwer.Compose([
@@ -110,6 +132,7 @@ transform = jiwer.Compose([
     jiwer.Strip(),
     jiwer.ReduceToListOfListOfWords(word_delimiter=" "),
 ])
+
 
 def calculate_wer(reference_str: str, hypothesis_str: str) -> float:
     return jiwer.wer(
@@ -138,21 +161,26 @@ async def process_folder(folder_prefix: str):
     wav_bytes = get_s3_object_bytes(wav_key)
     reference_text = get_s3_object_bytes(txt_key).decode("utf-8")
 
-    hyp, audio_sec, latency_ms = await transcribe_ws(wav_bytes)
+    hyp, audio_sec, latency_ms, ttft_ms = await transcribe_ws(wav_bytes)
 
     normalized_ref = normalize(reference_text)
     normalized_hyp = normalize(hyp)
 
     return {
         util.FILENAME_COLUMN_NAME: folder_prefix.split("/")[-2],
+
         util.REFERENCE_TEXT_COLUMN_NAME: reference_text,
-        util.REFERENCE_TEXT_NORMALIZED_COLUMN_NAME: normalized_ref,
-        util.get_latency_column_name("nemotron"): latency_ms,
         util.get_transcript_column_name("nemotron"): hyp,
         util.get_wer_column_name("nemotron"): calculate_wer(reference_text, hyp),
+
+        util.REFERENCE_TEXT_NORMALIZED_COLUMN_NAME: normalized_ref,
         util.get_transcript_normalized_column_name("nemotron"): normalized_hyp,
         util.get_wer_for_transcript_and_reference_normalized_column_name("nemotron"):
             calculate_wer(normalized_ref, normalized_hyp),
+
+        "latency_ms": latency_ms,
+        "ttft_ms": ttft_ms,
+        "audio_sec": round(audio_sec, 2),
     }
 
 
